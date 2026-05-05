@@ -9,8 +9,9 @@ import {
   Apple, Carrot, Wheat, Fish, Droplet, Users, User, Sparkles,
   ScrollText, FlaskConical, AlertCircle, Leaf, Camera, X, Wand2,
   Filter, HelpCircle, ListTree,
-  CheckCircle2, MinusCircle, ExternalLink
+  CheckCircle2, MinusCircle, ExternalLink, LogOut
 } from 'lucide-react';
+import { useAuth } from './contexts/AuthContext';
 
 // =============================================================
 // LOCAL STORAGE WRAPPER
@@ -179,10 +180,26 @@ const CUT_POINTS = {
 // COMPONENT
 // =============================================================
 export default function ChromaDiet() {
-  const [tab, setTab] = useState('intake');
-  const [participantId] = useState(() => 'P-' + Math.random().toString(36).slice(2,7).toUpperCase());
-  const [demographics, setDemographics] = useState({ ageRange:'', sex:'', cohortCode:'' });
-  const [consent, setConsent] = useState(false);
+  // Pull participant identity from the auth profile (populated by the
+  // handle_new_user trigger from raw_user_meta_data at signup time).
+  // ProtectedRoute already waits on profileLoading, so by the time
+  // this component renders, profile is non-null.
+  const { profile, signOut, isDemo } = useAuth();
+  const participantId = profile?.participant_code || '';
+  const demographics = {
+    ageRange:   profile?.age_range   || '',
+    sex:        profile?.sex         || '',
+    cohortCode: profile?.cohort_code || '',
+  };
+  // Schema stores consent as a timestamp (consent_given_at), not a bool.
+  // Treat any non-null timestamp as "consent on file."
+  const consent = !!profile?.consent_given_at;
+
+  // No-op shims for any code that still calls these. Demographics + consent
+  // are now captured at signup; the intake form should not be writing them.
+  // Remove the shims once every call site is migrated.
+  const setDemographics = () => {};
+  const setConsent = () => {};
 
   // Entries support: text-only (foodId set), photo-only (foodId='', photo set), or both.
   // Components array represents ingredient-level breakdown for composite dishes.
@@ -372,6 +389,7 @@ export default function ChromaDiet() {
     };
   }, [cohort]);
 
+  const [tab, setTab] = useState('intake');
   // -------- HANDLERS --------
   const addEntry = () => setEntries([...entries, { id: Date.now(), foodId: '', portionG: 100, meal: 'Snack', photo: null, description: '', components: null }]);
   const updateEntry = (id, key, val) => setEntries(entries.map(e => e.id === id ? { ...e, [key]: val } : e));
@@ -624,9 +642,24 @@ export default function ChromaDiet() {
               <div className="text-[11px] tracking-[0.18em] uppercase text-stone-500 mt-1.5">Color Pigment & Flavonoid Intake Analyzer</div>
             </div>
           </div>
-          <div className="text-right hidden md:block">
-            <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500">Participant</div>
-            <div style={{ fontFamily: 'JetBrains Mono, monospace' }} className="text-sm text-emerald-800 font-medium">{participantId}</div>
+          <div className="flex items-center gap-3">
+            {isDemo && (
+              <span className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-purple-100 text-purple-800 border border-purple-200">
+                Demo
+              </span>
+            )}
+            <div className="text-right hidden md:block">
+              <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500">Participant</div>
+              <div style={{ fontFamily: 'JetBrains Mono, monospace' }} className="text-sm text-emerald-800 font-medium">{participantId}</div>
+            </div>
+            <button
+              onClick={signOut}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-stone-700 hover:text-stone-900 hover:bg-stone-100 transition"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign out</span>
+            </button>
           </div>
         </div>
 
