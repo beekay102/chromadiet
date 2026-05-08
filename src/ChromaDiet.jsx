@@ -9,7 +9,7 @@ import {
   Apple, Carrot, Wheat, Fish, Droplet, Users, User, Sparkles,
   ScrollText, FlaskConical, AlertCircle, Leaf, Camera, X, Wand2,
   Filter, HelpCircle, ListTree,
-  CheckCircle2, MinusCircle, ExternalLink, LogOut
+  CheckCircle2, MinusCircle, ExternalLink, LogOut, RefreshCw
 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
 import MyHistoryTab from './components/MyHistoryTab';
