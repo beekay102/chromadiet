@@ -14,6 +14,7 @@ import {
 import { useAuth } from './contexts/AuthContext';
 import MyHistoryTab from './components/MyHistoryTab';
 import CohortViewTab from './components/CohortViewTab';
+import AdminTab from './components/AdminTab'; 
 import { submitRecall } from './lib/recallSubmissions';
 import {
   FOOD_DB, FLAVONOID_CLASSES, COLOR_CATEGORIES,
@@ -68,7 +69,7 @@ export default function ChromaDiet() {
   // handle_new_user trigger from raw_user_meta_data at signup time).
   // ProtectedRoute already waits on profileLoading, so by the time
   // this component renders, profile is non-null.
-const { profile, signOut, isDemo, isStaff } = useAuth();
+  const { profile, signOut, isDemo, isStaff, isAdmin } = useAuth();
   const participantId = profile?.participant_code || '';
   const demographics = {
     ageRange:   profile?.age_range   || '',
@@ -450,6 +451,7 @@ const { profile, signOut, isDemo, isStaff } = useAuth();
             <TabButton id="results" label="My Results" icon={User} />
             <TabButton id="history" label={isStaff ? "All Participants — History" : "My History"} icon={ListTree} />
             {isStaff && <TabButton id="cohort" label="Cohort View" icon={Users} />}
+            {isAdmin && <TabButton id="admin" label="Admin" icon={Wand2} />}
             <TabButton id="phase2" label="Phase 2 — Sensory" icon={Sparkles} />
             <TabButton id="methods" label="Methods & References" icon={ScrollText} />
           </div>
@@ -1175,7 +1177,11 @@ const { profile, signOut, isDemo, isStaff } = useAuth();
         {/* ========== COHORT TAB ========== */}
         {tab === 'cohort' && isStaff && (
           <CohortViewTab refreshSignal={historyRefreshSignal} />
-        )} 
+        )}
+
+        {tab === 'admin' && isAdmin && (
+          <AdminTab onAfterMutation={() => setHistoryRefreshSignal((n) => n + 1)} />
+        )}
 
         {/* ========== PHASE 2 TAB ========== */}
         {tab === 'phase2' && (
