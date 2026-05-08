@@ -7,7 +7,8 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { fetchRecallHistory, PAGE_SIZE } from '../lib/recallHistory';
-import { RefreshCw, AlertCircle, ChevronRight, Inbox } from 'lucide-react';
+import { RefreshCw, AlertCircle, ChevronRight, ChevronDown, Inbox } from 'lucide-react';
+import RecallDetailPanel from './RecallDetailPanel';
 
 export default function MyHistoryTab({ refreshSignal, onJumpToIntake, isStaff = false }) {
   const [rows, setRows] = useState([]);
@@ -17,6 +18,14 @@ export default function MyHistoryTab({ refreshSignal, onJumpToIntake, isStaff = 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState(null);
+
+  // Which row is currently expanded (showing the detail panel inline). Only
+  // one row is open at a time — clicking a different row closes the previous.
+  const [expandedSessionId, setExpandedSessionId] = useState(null);
+
+  const toggleExpand = useCallback((sessionId) => {
+    setExpandedSessionId(prev => prev === sessionId ? null : sessionId);
+  }, []);
 
   // Load the first page (replacing any prior data). Used on mount, refresh,
   // and after a successful submit (via refreshSignal).
@@ -105,7 +114,12 @@ export default function MyHistoryTab({ refreshSignal, onJumpToIntake, isStaff = 
               </thead>
               <tbody>
                 {rows.map((r) => (
-                  <HistoryRow key={r.session_id} row={r} />
+                  <HistoryRow
+                    key={r.session_id}
+                    row={r}
+                    expanded={expandedSessionId === r.session_id}
+                    onToggle={() => toggleExpand(r.session_id)}
+                  />
                 ))}
               </tbody>
             </table>
@@ -131,7 +145,7 @@ export default function MyHistoryTab({ refreshSignal, onJumpToIntake, isStaff = 
   );
 }
 
-function HistoryRow({ row }) {
+function HistoryRow({ row, expanded, onToggle }) {
   const submitted = row.submitted_at ? new Date(row.submitted_at) : null;
   const dateStr = submitted ? submitted.toLocaleString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
@@ -139,25 +153,40 @@ function HistoryRow({ row }) {
   }) : '—';
 
   return (
-    <tr className="border-b border-stone-100 last:border-b-0 hover:bg-stone-50/50">
-      <td className="px-4 py-3 text-stone-800">{dateStr}</td>
-      <td className="px-4 py-3" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-        {row.cohort_code || <span className="text-stone-400">—</span>}
-      </td>
-      <td className="px-4 py-3 text-stone-700">
-        {row.entry_count ?? <span className="text-stone-400">—</span>}
-      </td>
-      <td className="px-4 py-3 text-stone-700">
-        {typeof row.total_score === 'number' ? row.total_score.toFixed(0) : <span className="text-stone-400">—</span>}
-      </td>
-      <td className="px-4 py-3">
-        <StatusPill status={row.status} />
-      </td>
-      <td className="px-4 py-3 text-right">
-        {/* Detail view is a Phase 4 nice-to-have; for now this is decorative. */}
-        <ChevronRight className="w-4 h-4 text-stone-300" />
-      </td>
-    </tr>
+    <>
+      <tr
+        className={`border-b border-stone-100 last:border-b-0 cursor-pointer transition ${expanded ? 'bg-emerald-50/30' : 'hover:bg-stone-50/50'}`}
+        onClick={onToggle}
+        aria-expanded={expanded}
+      >
+        <td className="px-4 py-3 text-stone-800">{dateStr}</td>
+        <td className="px-4 py-3" style={{ fontFamily: 'JetBrains Mono, monospace' }}>
+          {row.cohort_code || <span className="text-stone-400">—</span>}
+        </td>
+        <td className="px-4 py-3 text-stone-700">
+          {row.entry_count ?? <span className="text-stone-400">—</span>}
+        </td>
+        <td className="px-4 py-3 text-stone-700">
+          {typeof row.total_score === 'number' ? row.total_score.toFixed(0) : <span className="text-stone-400">—</span>}
+        </td>
+        <td className="px-4 py-3">
+          <StatusPill status={row.status} />
+        </td>
+        <td className="px-4 py-3 text-right">
+          {expanded
+            ? <ChevronDown className="w-4 h-4 text-emerald-700" />
+            : <ChevronRight className="w-4 h-4 text-stone-300" />
+          }
+        </td>
+      </tr>
+      {expanded && (
+        <tr className="border-b border-stone-100 last:border-b-0">
+          <td colSpan={6} className="p-0">
+            <RecallDetailPanel sessionId={row.session_id} />
+          </td>
+        </tr>
+      )}
+    </>
   );
 }
 
