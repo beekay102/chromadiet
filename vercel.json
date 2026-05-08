@@ -5,6 +5,9 @@
     }
   },
   "rewrites": [
-    { "source": "/((?!api/).*)", "destination": "/index.html" }
+    {
+      "source": "/((?!api/|src/|node_modules/|@vite/|@react-refresh|@id/|.*\\.(?:js|jsx|ts|tsx|css|svg|png|jpg|jpeg|gif|webp|ico|woff|woff2|ttf|otf|json|map|html)).*)",
+      "destination": "/index.html"
+    }
   ]
 }

@@ -64,6 +64,54 @@ const CLASS_BENEFITS = {
 // =============================================================
 // COMPONENT
 // =============================================================
+// -------- UI HELPERS (defined outside the component to keep stable identities) --------
+
+function TabButton({ id, label, icon: Icon, currentTab, onSelect }) {
+  return (
+    <button
+      onClick={() => onSelect(id)}
+      className={`flex items-center gap-2 px-5 py-2.5 text-sm rounded-full transition-all ${
+        currentTab === id
+          ? 'bg-white shadow-sm text-emerald-800 font-semibold border border-emerald-200'
+          : 'text-stone-600 hover:bg-white/60 hover:text-emerald-800'
+      }`}
+    >
+      <Icon size={15} strokeWidth={1.75} />
+      <span style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
+    </button>
+  );
+}
+
+function Card({ children, className = '', accent, style }) {
+  return (
+    <div className={`bg-white rounded-2xl shadow-sm border border-stone-200/70 ${className}`} style={{ ...(accent ? { borderTop: `3px solid ${accent}` } : {}), ...(style || {}) }}>
+      {children}
+    </div>
+  );
+}
+
+function SectionHeading({ eyebrow, title, sub }) {
+  return (
+    <div className="mb-10 pb-6 border-b border-stone-200">
+      {eyebrow && (
+        <div className="text-[11px] tracking-[0.25em] uppercase text-emerald-700 font-semibold mb-3">{eyebrow}</div>
+      )}
+      <h2 style={{ fontFamily: 'Fraunces, Georgia, serif' }} className="text-4xl md:text-5xl text-stone-900 leading-tight font-semibold">{title}</h2>
+      {sub && <p className="text-stone-600 mt-3 text-base leading-relaxed max-w-3xl">{sub}</p>}
+    </div>
+  );
+}
+
+function SubHeading({ label, title, hint }) {
+  return (
+    <div className="mb-4">
+      <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500 font-semibold">{label}</div>
+      <div style={{ fontFamily: 'Fraunces, serif' }} className="text-xl font-medium">{title}</div>
+      {hint && <div className="text-xs text-stone-500 mt-1">{hint}</div>}
+    </div>
+  );
+}
+
 export default function ChromaDiet() {
   // Pull participant identity from the auth profile (populated by the
   // handle_new_user trigger from raw_user_meta_data at signup time).
@@ -128,7 +176,7 @@ export default function ChromaDiet() {
   const [photoUploadStatus, setPhotoUploadStatus] = useState({});
   // -------- HANDLERS --------
   const addEntry = () => setEntries([...entries, { id: Date.now(), foodId: '', portionG: 100, meal: 'Snack', photo: null, description: '', components: null }]);
-  const updateEntry = (id, key, val) => setEntries(entries.map(e => e.id === id ? { ...e, [key]: val } : e));
+  const updateEntry = (id, key, val) => setEntries(prev => prev.map(e => e.id === id ? { ...e, [key]: val } : e));
   const removeEntry = (id) => setEntries(entries.filter(e => e.id !== id));
 
   const handlePhotoUpload = (id, file) => {
@@ -138,13 +186,13 @@ export default function ChromaDiet() {
     reader.onload = (e) => {
       // Photo upload signals "let AI determine this entry" — clear food and portion
       // so the AI can estimate independently. User can manually override afterward.
-      setEntries(curr => curr.map(entry => entry.id === id ? {
-        ...entry,
-        photo: e.target.result,
-        foodId: '',
-        portionG: 0,
-        components: null,
-      } : entry));
+    setEntries(curr => curr.map(entry => entry.id === id ? {
+      ...entry,
+      photo: e.target.result,
+      // Preserve user-entered foodId and portionG. If the user runs AI scan,
+      // suggestions appear in the review modal where they can accept or override.
+      components: null,
+    } : entry));
     };
     reader.readAsDataURL(file);
   };
@@ -205,8 +253,12 @@ export default function ChromaDiet() {
         components: validMatches.map(m => ({ foodId: m.foodId, g: Math.round(m.portionG) })),
       };
     });
+    const scrollY = window.scrollY;
     setEntries(newEntries);
     setAiResults(null);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: scrollY, behavior: 'instant' });
+    });
   };
 
   // Compose entry — convert single-food entry into a composite by loading a preset
@@ -338,43 +390,8 @@ export default function ChromaDiet() {
   };
 
   // -------- UI HELPERS --------
-  const TabButton = ({ id, label, icon: Icon }) => (
-    <button
-      onClick={() => setTab(id)}
-      className={`flex items-center gap-2 px-5 py-2.5 text-sm rounded-full transition-all ${
-        tab === id
-          ? 'bg-white shadow-sm text-emerald-800 font-semibold border border-emerald-200'
-          : 'text-stone-600 hover:bg-white/60 hover:text-emerald-800'
-      }`}
-    >
-      <Icon size={15} strokeWidth={1.75} />
-      <span style={{ fontFamily: 'Inter, system-ui, sans-serif' }}>{label}</span>
-    </button>
-  );
-
-  const Card = ({ children, className = '', accent, style }) => (
-    <div className={`bg-white rounded-2xl shadow-sm border border-stone-200/70 ${className}`} style={{ ...(accent ? { borderTop: `3px solid ${accent}` } : {}), ...(style || {}) }}>
-      {children}
-    </div>
-  );
-
-  const SectionHeading = ({ eyebrow, title, sub }) => (
-    <div className="mb-10 pb-6 border-b border-stone-200">
-      {eyebrow && (
-        <div className="text-[11px] tracking-[0.25em] uppercase text-emerald-700 font-semibold mb-3">{eyebrow}</div>
-      )}
-      <h2 style={{ fontFamily: 'Fraunces, Georgia, serif' }} className="text-4xl md:text-5xl text-stone-900 leading-tight font-semibold">{title}</h2>
-      {sub && <p className="text-stone-600 mt-3 text-base leading-relaxed max-w-3xl">{sub}</p>}
-    </div>
-  );
-
-  const SubHeading = ({ label, title, hint }) => (
-    <div className="mb-4">
-      <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500 font-semibold">{label}</div>
-      <div style={{ fontFamily: 'Fraunces, serif' }} className="text-xl font-medium">{title}</div>
-      {hint && <div className="text-xs text-stone-500 mt-1">{hint}</div>}
-    </div>
-  );
+  // (TabButton uses parent state — wrap with useCallback handler instead.)
+  const handleTabClick = (id) => setTab(id);
 
   // Chart data
   const radarData = Object.keys(FLAVONOID_CLASSES).map(k => ({
@@ -447,13 +464,13 @@ export default function ChromaDiet() {
 
         <div className="max-w-7xl mx-auto px-6 md:px-8 pb-8">
           <div className="flex flex-wrap gap-1.5 bg-white/50 backdrop-blur-sm p-1.5 rounded-full border border-stone-200/60 w-fit">
-            <TabButton id="intake" label="Log Intake" icon={Plus} />
-            <TabButton id="results" label="My Results" icon={User} />
-            <TabButton id="history" label={isStaff ? "All Participants — History" : "My History"} icon={ListTree} />
-            {isStaff && <TabButton id="cohort" label="Cohort View" icon={Users} />}
-            {isAdmin && <TabButton id="admin" label="Admin" icon={Wand2} />}
-            <TabButton id="phase2" label="Phase 2 — Sensory" icon={Sparkles} />
-            <TabButton id="methods" label="Methods & References" icon={ScrollText} />
+            <TabButton id="intake" label="Log Intake" icon={Plus}  currentTab={tab} onSelect={setTab} />
+            <TabButton id="results" label="My Results" icon={User}  currentTab={tab} onSelect={setTab} />
+            <TabButton id="history" label={isStaff ? "All Participants — History" : "My History"} icon={ListTree}  currentTab={tab} onSelect={setTab} />
+            {isStaff && <TabButton id="cohort" label="Cohort View" icon={Users}  currentTab={tab} onSelect={setTab} />}
+            {isAdmin && <TabButton id="admin" label="Admin" icon={Wand2}  currentTab={tab} onSelect={setTab} />}
+            <TabButton id="phase2" label="Phase 2 — Sensory" icon={Sparkles}  currentTab={tab} onSelect={setTab} />
+            <TabButton id="methods" label="Methods & References" icon={ScrollText}  currentTab={tab} onSelect={setTab} />
           </div>
         </div>
       </header>
