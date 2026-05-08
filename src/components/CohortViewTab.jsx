@@ -115,21 +115,29 @@ export default function CohortViewTab({ refreshSignal }) {
     if (filteredRows.length === 0) return null;
 
     const distinctUsers = new Set(filteredRows.map((r) => r.user_id));
+
+    // Filter out NULLs before averaging — sessions submitted but not yet
+    // finalized by /api/finalize have total_score=null. We don't want them
+    // counted as zero (which would drag the mean down).
     const scores = filteredRows
+      .filter((r) => r.total_score !== null && r.total_score !== undefined)
       .map((r) => Number(r.total_score))
       .filter((n) => Number.isFinite(n));
     const meanScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 0;
 
     const totalMgs = filteredRows
+      .filter((r) => r.total_flavonoids_mg !== null && r.total_flavonoids_mg !== undefined)
       .map((r) => Number(r.total_flavonoids_mg))
       .filter((n) => Number.isFinite(n));
     const meanTotalMg = totalMgs.length ? totalMgs.reduce((a, b) => a + b, 0) / totalMgs.length : 0;
 
-    // Per-class flavonoid means. flav_totals is JSONB on each row.
+    // Per-class flavonoid means. flav_totals is JSONB on each row; null when
+    // the row hasn't been finalized yet (we filter those out per-class).
     const classMeans = {};
     for (const k of Object.keys(FLAVONOID_CLASSES)) {
       const vals = filteredRows
-        .map((r) => Number(r.flav_totals?.[k]))
+        .filter((r) => r.flav_totals && typeof r.flav_totals === 'object')
+        .map((r) => Number(r.flav_totals[k]))
         .filter((n) => Number.isFinite(n));
       classMeans[k] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
     }
@@ -137,6 +145,7 @@ export default function CohortViewTab({ refreshSignal }) {
     return {
       n: distinctUsers.size,
       submissions: filteredRows.length,
+      submissionsWithResults: scores.length,    // rows that have a finalized score
       meanScore,
       meanTotalMg,
       classMeans,
@@ -217,7 +226,11 @@ export default function CohortViewTab({ refreshSignal }) {
               accent="#7B3F9E"
               label="Participants"
               value={stats.n}
-              hint={`${stats.submissions} submission${stats.submissions === 1 ? '' : 's'}`}
+              hint={
+                stats.submissionsWithResults < stats.submissions
+                  ? `${stats.submissionsWithResults} of ${stats.submissions} submissions analyzed`
+                  : `${stats.submissions} submission${stats.submissions === 1 ? '' : 's'}`
+              }
             />
             <StatCard
               accent="#5B8C3E"
