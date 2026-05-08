@@ -132,7 +132,6 @@ export default function MyHistoryTab({ refreshSignal, onJumpToIntake, isStaff = 
 }
 
 function HistoryRow({ row }) {
-  console.log('[HistoryRow] row.total_score =', row.total_score, 'typeof =', typeof row.total_score, 'row =', row);
   const submitted = row.submitted_at ? new Date(row.submitted_at) : null;
   const dateStr = submitted ? submitted.toLocaleString(undefined, {
     year: 'numeric', month: 'short', day: 'numeric',
