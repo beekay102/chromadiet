@@ -12,131 +12,25 @@ import {
   CheckCircle2, MinusCircle, ExternalLink, LogOut
 } from 'lucide-react';
 import { useAuth } from './contexts/AuthContext';
-
-// =============================================================
-// LOCAL STORAGE WRAPPER
-// =============================================================
-const localStore = {
-  async list(prefix) {
-    const keys = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && k.startsWith(prefix)) keys.push(k);
-    }
-    return { keys };
-  },
-  async get(key) {
-    const value = localStorage.getItem(key);
-    return value !== null ? { key, value } : null;
-  },
-  async set(key, value) {
-    localStorage.setItem(key, value);
-    return { key, value };
-  },
-  async delete(key) {
-    localStorage.removeItem(key);
-    return { key, deleted: true };
-  },
-};
+import MyHistoryTab from './components/MyHistoryTab';
+import CohortViewTab from './components/CohortViewTab';
+import { submitRecall } from './lib/recallSubmissions';
+import {
+  FOOD_DB, FLAVONOID_CLASSES, COLOR_CATEGORIES,
+  NHANES_MEAN, CUT_POINTS, COMPOSITE_DISHES,
+} from './lib/foodDb.js';
+import { computeAnalysis } from './lib/analysis.js';
+import { supabase } from './lib/supabase';
 
 // =============================================================
 // REFERENCE DATA — flavonoid classes, color categories, food DB
 // =============================================================
-const FLAVONOID_CLASSES = {
-  anthocyanidins: { label: 'Anthocyanidins', color: '#7B3F9E', compounds: ['Cyanidin','Delphinidin','Malvidin','Pelargonidin','Peonidin','Petunidin'] },
-  flavan3ols:    { label: 'Flavan-3-ols',    color: '#A0522D', compounds: ['(-)-Epicatechin','(-)-Epicatechin 3-gallate','(-)-Epigallocatechin','(-)-Epigallocatechin 3-gallate','(+)-Catechin','(+)-Gallocatechin','Theaflavin','Theaflavin-3,3\'-digallate','Theaflavin-3\'-gallate','Theaflavin-3-gallate','Thearubigins'] },
-  flavanones:    { label: 'Flavanones',      color: '#F5A623', compounds: ['Eriodictyol','Hesperetin','Naringenin'] },
-  flavones:      { label: 'Flavones',        color: '#7CB342', compounds: ['Apigenin','Luteolin'] },
-  flavonols:     { label: 'Flavonols',       color: '#D4A017', compounds: ['Isorhamnetin','Kaempferol','Myricetin','Quercetin'] },
-  isoflavones:   { label: 'Isoflavones',     color: '#D87C5A', compounds: ['Daidzein','Genistein','Glycitein'] },
-};
 
-const COLOR_CATEGORIES = {
-  red:        { label: 'Red',          hex: '#C73E3E' },
-  orangeYellow:{ label: 'Orange/Yellow',hex: '#E89422' },
-  green:      { label: 'Green',        hex: '#5B8C3E' },
-  bluePurple: { label: 'Blue/Purple',  hex: '#7B3F9E' },
-  whiteTan:   { label: 'White/Tan',    hex: '#BCAAA4' },
-};
-
-// Single-ingredient food database (mg per 100g)
-const FOOD_DB = [
-  { id:'blueberry', name:'Blueberries', myplate:'fruits', color:'bluePurple', flav:{ anthocyanidins:163.5, flavan3ols:25.8, flavanones:0, flavones:0, flavonols:8.2, isoflavones:0 } },
-  { id:'blackberry', name:'Blackberries', myplate:'fruits', color:'bluePurple', flav:{ anthocyanidins:90.0, flavan3ols:36.7, flavanones:0, flavones:0, flavonols:1.5, isoflavones:0 } },
-  { id:'strawberry', name:'Strawberries', myplate:'fruits', color:'red', flav:{ anthocyanidins:21.2, flavan3ols:5.2, flavanones:0, flavones:0, flavonols:1.1, isoflavones:0 } },
-  { id:'raspberry', name:'Raspberries', myplate:'fruits', color:'red', flav:{ anthocyanidins:38.7, flavan3ols:7.0, flavanones:0, flavones:0, flavonols:1.1, isoflavones:0 } },
-  { id:'cranberry', name:'Cranberries', myplate:'fruits', color:'red', flav:{ anthocyanidins:91.6, flavan3ols:7.7, flavanones:0, flavones:0, flavonols:15.1, isoflavones:0 } },
-  { id:'red_grape', name:'Red grapes', myplate:'fruits', color:'bluePurple', flav:{ anthocyanidins:26.7, flavan3ols:13.0, flavanones:0, flavones:0, flavonols:3.5, isoflavones:0 } },
-  { id:'red_wine', name:'Red wine (1 glass)', myplate:'other', color:'bluePurple', flav:{ anthocyanidins:9.0, flavan3ols:32.0, flavanones:0, flavones:0, flavonols:3.2, isoflavones:0 } },
-  { id:'orange', name:'Orange', myplate:'fruits', color:'orangeYellow', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:42.6, flavones:0.6, flavonols:0.4, isoflavones:0 } },
-  { id:'grapefruit', name:'Grapefruit', myplate:'fruits', color:'orangeYellow', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:53.1, flavones:0, flavonols:0.4, isoflavones:0 } },
-  { id:'lemon', name:'Lemon', myplate:'fruits', color:'orangeYellow', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:30.2, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'apple', name:'Apple (with skin)', myplate:'fruits', color:'red', flav:{ anthocyanidins:1.3, flavan3ols:7.0, flavanones:0, flavones:0, flavonols:3.6, isoflavones:0 } },
-  { id:'cherry', name:'Sweet cherries', myplate:'fruits', color:'red', flav:{ anthocyanidins:30.2, flavan3ols:6.3, flavanones:0, flavones:0, flavonols:1.2, isoflavones:0 } },
-  { id:'red_onion', name:'Red onion', myplate:'vegetables', color:'bluePurple', flav:{ anthocyanidins:13.0, flavan3ols:0, flavanones:0, flavones:0, flavonols:30.6, isoflavones:0 } },
-  { id:'yellow_onion', name:'Yellow onion', myplate:'vegetables', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:25.3, isoflavones:0 } },
-  { id:'kale', name:'Kale', myplate:'vegetables', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:38.8, isoflavones:0 } },
-  { id:'broccoli', name:'Broccoli', myplate:'vegetables', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:6.0, isoflavones:0 } },
-  { id:'spinach', name:'Spinach', myplate:'vegetables', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:6.0, isoflavones:0 } },
-  { id:'red_cabbage', name:'Red cabbage', myplate:'vegetables', color:'bluePurple', flav:{ anthocyanidins:73.0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0.4, isoflavones:0 } },
-  { id:'tomato', name:'Tomato', myplate:'vegetables', color:'red', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:1.6, flavones:0, flavonols:1.6, isoflavones:0 } },
-  { id:'parsley', name:'Parsley', myplate:'vegetables', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:215.5, flavonols:8.7, isoflavones:0 } },
-  { id:'celery', name:'Celery', myplate:'vegetables', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:22.6, flavonols:0.5, isoflavones:0 } },
-  { id:'green_tea', name:'Green tea (1 cup)', myplate:'other', color:'green', flav:{ anthocyanidins:0, flavan3ols:127.0, flavanones:0, flavones:0, flavonols:2.2, isoflavones:0 } },
-  { id:'black_tea', name:'Black tea (1 cup)', myplate:'other', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:115.0, flavanones:0, flavones:0, flavonols:4.8, isoflavones:0 } },
-  { id:'dark_chocolate', name:'Dark chocolate', myplate:'other', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:108.0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'cocoa', name:'Cocoa powder', myplate:'other', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:511.0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'tofu', name:'Tofu', myplate:'protein', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:22.7 } },
-  { id:'soymilk', name:'Soymilk (1 cup)', myplate:'protein', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:7.3 } },
-  { id:'edamame', name:'Edamame', myplate:'protein', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:17.9 } },
-  { id:'whole_wheat', name:'Whole wheat bread', myplate:'wholeGrains', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:1.0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'oats', name:'Oatmeal', myplate:'wholeGrains', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'brown_rice', name:'Brown rice', myplate:'wholeGrains', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'salmon', name:'Salmon', myplate:'protein', color:'orangeYellow', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'chicken', name:'Chicken breast', myplate:'protein', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'avocado', name:'Avocado', myplate:'healthyFats', color:'green', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'olive_oil', name:'Olive oil', myplate:'healthyFats', color:'orangeYellow', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'walnuts', name:'Walnuts', myplate:'healthyFats', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'almonds', name:'Almonds', myplate:'healthyFats', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:6.5, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'pomegranate', name:'Pomegranate', myplate:'fruits', color:'red', flav:{ anthocyanidins:36.0, flavan3ols:0, flavanones:0, flavones:0, flavonols:1.0, isoflavones:0 } },
-  { id:'eggplant', name:'Eggplant', myplate:'vegetables', color:'bluePurple', flav:{ anthocyanidins:13.8, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-  { id:'banana', name:'Banana', myplate:'fruits', color:'whiteTan', flav:{ anthocyanidins:0, flavan3ols:1.5, flavanones:0, flavones:0, flavonols:0, isoflavones:0 } },
-];
 
 // Composite dishes — decompose to single-ingredient subFoods.
 // Quantities are typical-portion grams of each ingredient per 1 dish serving.
-const COMPOSITE_DISHES = {
-  berry_oatmeal: {
-    label: 'Mixed berry oatmeal (1 bowl)',
-    components: [
-      { foodId:'oats', g:40 }, { foodId:'blueberry', g:30 }, { foodId:'strawberry', g:30 }, { foodId:'almonds', g:10 }
-    ],
-  },
-  kale_cranberry_walnut_salad: {
-    label: 'Kale-cranberry-walnut salad',
-    components: [
-      { foodId:'kale', g:80 }, { foodId:'cranberry', g:15 }, { foodId:'walnuts', g:15 }, { foodId:'olive_oil', g:7 }
-    ],
-  },
-  greek_salad: {
-    label: 'Greek-style salad',
-    components: [
-      { foodId:'tomato', g:80 }, { foodId:'red_onion', g:25 }, { foodId:'parsley', g:5 }, { foodId:'olive_oil', g:10 }
-    ],
-  },
-  fruit_smoothie: {
-    label: 'Berry-banana smoothie',
-    components: [
-      { foodId:'blueberry', g:60 }, { foodId:'banana', g:80 }, { foodId:'soymilk', g:200 }, { foodId:'oats', g:15 }
-    ],
-  },
-};
 
 // USDA NHANES 2007–2008 mean intakes (mg/day, adults 19+) — approximate
-const NHANES_MEAN = {
-  anthocyanidins: 11.6, flavan3ols: 156.5, flavanones: 14.4,
-  flavones: 1.6, flavonols: 12.9, isoflavones: 1.3,
-};
 
 // Health benefit key — full descriptions (Khoo 2017, Tables 2–3 plus mechanistic literature)
 const HEALTH_BENEFITS_KEY = {
@@ -166,16 +60,6 @@ const CLASS_BENEFITS = {
   isoflavones:   ['bone','menopause','hormone'],
 };
 
-// Sufficiency cut-points — research-suggested intake guides, NOT formal RDAs
-const CUT_POINTS = {
-  anthocyanidins: { value: 25, source: 'Khoo 2017 — observational cardiovascular benefit threshold', outcome: 'Cardiovascular / metabolic' },
-  flavan3ols:    { value: 400, source: 'COSMOS 2022 / cocoa flavanol RCTs', outcome: 'Endothelial function & blood pressure' },
-  isoflavones:   { value: 25, source: 'NIH ODS — menopausal symptom relief studies', outcome: 'Menopausal / bone' },
-  flavonols:     { value: 10, source: 'Bondonno 2019 EPIC cohort', outcome: 'Cardiovascular mortality' },
-  flavanones:    { value: null, source: 'No validated daily target', outcome: '—' },
-  flavones:      { value: null, source: 'No validated daily target', outcome: '—' },
-};
-
 // =============================================================
 // COMPONENT
 // =============================================================
@@ -184,7 +68,7 @@ export default function ChromaDiet() {
   // handle_new_user trigger from raw_user_meta_data at signup time).
   // ProtectedRoute already waits on profileLoading, so by the time
   // this component renders, profile is non-null.
-  const { profile, signOut, isDemo } = useAuth();
+const { profile, signOut, isDemo, isStaff } = useAuth();
   const participantId = profile?.participant_code || '';
   const demographics = {
     ageRange:   profile?.age_range   || '',
@@ -217,179 +101,30 @@ export default function ChromaDiet() {
   const [aiError, setAiError] = useState(null);
 
   const [submitted, setSubmitted] = useState(false);
-  const [cohort, setCohort] = useState([]);
-  const [cohortLoading, setCohortLoading] = useState(true);
-  const [cohortFilter, setCohortFilter] = useState({ ageRange:'all', sex:'all', cohortCode:'all' });
   const [openHelp, setOpenHelp] = useState(null); // tracks which help/glossary section is open
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const list = await localStore.list('chromadiet:participant:');
-        if (list && list.keys && list.keys.length) {
-          const fetched = await Promise.all(
-            list.keys.map(async (k) => {
-              try { const r = await localStore.get(k); return r ? JSON.parse(r.value) : null; }
-              catch { return null; }
-            })
-          );
-          setCohort(fetched.filter(Boolean));
-        } else {
-          setCohort([]);
-        }
-      } catch (e) { /* ignore */ }
-      finally { setCohortLoading(false); }
-    })();
-  }, [submitted]);
-
-  // Resolve an entry to a list of {foodId, grams} pieces.
-  // - If `components` is set, use those
-  // - else if `foodId` is set, use the single foodId at portionG
-  // - else (photo-only entry awaiting AI scan), return empty
-  const resolveEntryComponents = (entry) => {
-    if (entry.components && entry.components.length) {
-      return entry.components.map(c => ({ foodId: c.foodId, g: c.g }));
-    }
-    if (entry.foodId) {
-      return [{ foodId: entry.foodId, g: entry.portionG }];
-    }
-    return [];
-  };
-
-  // -------- COMPUTED ANALYSIS --------
-  const analysis = useMemo(() => {
-    const flavTotals = { anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 };
-    const colorCounts = { red:0, orangeYellow:0, green:0, bluePurple:0, whiteTan:0 };
-    const myplateCounts = { fruits:0, vegetables:0, wholeGrains:0, protein:0, healthyFats:0, other:0 };
-    const colorPigmentMg = { red:0, orangeYellow:0, green:0, bluePurple:0, whiteTan:0 };
-    const byMeal = {};
-    let fruitCount = 0, vegCount = 0;
-    const fruitColorCounts = { red:0, orangeYellow:0, green:0, bluePurple:0, whiteTan:0 };
-    const vegColorCounts = { red:0, orangeYellow:0, green:0, bluePurple:0, whiteTan:0 };
-
-    // Sources attribution: for each class, list contributors {foodId, name, mg}
-    const sources = { anthocyanidins:[], flavan3ols:[], flavanones:[], flavones:[], flavonols:[], isoflavones:[] };
-
-    entries.forEach(entry => {
-      const pieces = resolveEntryComponents(entry);
-      const mealKey = entry.meal || 'Other';
-      if (!byMeal[mealKey]) byMeal[mealKey] = { anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 };
-
-      // Track parent-entry membership so MyPlate/color tallies aren't inflated by sub-ingredients
-      const parentFood = FOOD_DB.find(f => f.id === entry.foodId);
-      if (parentFood) {
-        colorCounts[parentFood.color] = (colorCounts[parentFood.color] || 0) + 1;
-        myplateCounts[parentFood.myplate] = (myplateCounts[parentFood.myplate] || 0) + 1;
-        if (parentFood.myplate === 'fruits') { fruitCount++; fruitColorCounts[parentFood.color]++; }
-        if (parentFood.myplate === 'vegetables') { vegCount++; vegColorCounts[parentFood.color]++; }
-      }
-
-      pieces.forEach(piece => {
-        const food = FOOD_DB.find(f => f.id === piece.foodId);
-        if (!food) return;
-        const factor = piece.g / 100;
-        let pieceTotalMg = 0;
-        Object.keys(food.flav).forEach(cls => {
-          const mg = food.flav[cls] * factor;
-          flavTotals[cls] += mg;
-          byMeal[mealKey][cls] += mg;
-          pieceTotalMg += mg;
-          if (mg > 0) {
-            const existing = sources[cls].find(s => s.foodId === piece.foodId);
-            if (existing) existing.mg += mg;
-            else sources[cls].push({ foodId: piece.foodId, name: food.name, mg });
-          }
-        });
-        // Color-category mg attribution from each piece (so a salad's pigments are split correctly)
-        colorPigmentMg[food.color] = (colorPigmentMg[food.color] || 0) + pieceTotalMg;
-      });
-    });
-
-    // Sort each class's sources by mg desc
-    Object.keys(sources).forEach(c => sources[c].sort((a,b) => b.mg - a.mg));
-
-    const totalMg = Object.values(flavTotals).reduce((a,b)=>a+b, 0);
-    const classesPresent = Object.values(flavTotals).filter(v => v > 0).length;
-    const colorsPresent = Object.values(colorCounts).filter(v => v > 0).length;
-    const myplateGroupsHit = ['fruits','vegetables','wholeGrains','protein','healthyFats'].filter(k => myplateCounts[k] > 0).length;
-
-    const diversityScore = (classesPresent / 6) * 30;
-    const colorScore = (colorsPresent / 5) * 25;
-    const nhanesTotal = Object.values(NHANES_MEAN).reduce((a,b)=>a+b, 0);
-    const intakeScore = Math.min(totalMg / nhanesTotal, 1) * 20;
-    const myplateScore = (myplateGroupsHit / 5) * 15;
-    const anthoScore = Math.min(flavTotals.anthocyanidins / 25, 1) * 10;
-    const totalScore = Math.round(diversityScore + colorScore + intakeScore + myplateScore + anthoScore);
-
-    const missingClasses = Object.keys(FLAVONOID_CLASSES).filter(c => flavTotals[c] === 0);
-    const missingColors = Object.keys(COLOR_CATEGORIES).filter(c => colorCounts[c] === 0);
-
-    // Sufficiency status per class
-    const sufficiency = {};
-    Object.keys(FLAVONOID_CLASSES).forEach(c => {
-      const cp = CUT_POINTS[c];
-      if (!cp || cp.value === null) {
-        sufficiency[c] = { status: 'no_target', label: 'No validated target' };
-      } else if (flavTotals[c] >= cp.value) {
-        sufficiency[c] = { status: 'sufficient', label: `≥ ${cp.value} mg/d threshold met`, target: cp.value };
-      } else if (flavTotals[c] === 0) {
-        sufficiency[c] = { status: 'absent', label: 'Not detected today', target: cp.value };
-      } else {
-        sufficiency[c] = { status: 'below', label: `Below ${cp.value} mg/d threshold`, target: cp.value, gap: cp.value - flavTotals[c] };
-      }
-    });
-
-    return {
-      flavTotals, colorCounts, colorPigmentMg, myplateCounts, byMeal,
-      totalMg, classesPresent, colorsPresent, myplateGroupsHit,
-      fruitCount, vegCount, fruitColorCounts, vegColorCounts,
-      totalScore, missingClasses, missingColors,
-      sources, sufficiency,
-      breakdown: { diversityScore, colorScore, intakeScore, myplateScore, anthoScore }
-    };
-  }, [entries]);
+    // Analysis is now computed by the shared module in src/lib/analysis.js
+    // (see imports at top). The same module is used server-side by api/finalize.js,
+    // which is what canonically writes recall_results.
+    const analysis = useMemo(() => computeAnalysis(entries), [entries]);
 
   // -------- COHORT AGGREGATE (with sub-group filter) --------
-  const filteredCohort = useMemo(() => {
-    return cohort.filter(p => {
-      if (cohortFilter.ageRange !== 'all' && p.demographics?.ageRange !== cohortFilter.ageRange) return false;
-      if (cohortFilter.sex !== 'all' && p.demographics?.sex !== cohortFilter.sex) return false;
-      if (cohortFilter.cohortCode !== 'all' && p.demographics?.cohortCode !== cohortFilter.cohortCode) return false;
-      return true;
-    });
-  }, [cohort, cohortFilter]);
 
-  const cohortStats = useMemo(() => {
-    if (!filteredCohort.length) return null;
-    const sums = { anthocyanidins:0, flavan3ols:0, flavanones:0, flavones:0, flavonols:0, isoflavones:0 };
-    let scoreSum = 0;
-    filteredCohort.forEach(p => {
-      Object.keys(sums).forEach(k => sums[k] += (p.flavTotals[k] || 0));
-      scoreSum += p.totalScore || 0;
-    });
-    const means = {};
-    Object.keys(sums).forEach(k => means[k] = sums[k] / filteredCohort.length);
-    return { n: filteredCohort.length, means, meanScore: scoreSum / filteredCohort.length };
-  }, [filteredCohort]);
-
-  // Available filter options derived from the actual cohort data
-  const cohortFilterOptions = useMemo(() => {
-    const ageRanges = new Set(['all']);
-    const sexes = new Set(['all']);
-    const cohortCodes = new Set(['all']);
-    cohort.forEach(p => {
-      if (p.demographics?.ageRange) ageRanges.add(p.demographics.ageRange);
-      if (p.demographics?.sex) sexes.add(p.demographics.sex);
-      if (p.demographics?.cohortCode) cohortCodes.add(p.demographics.cohortCode);
-    });
-    return {
-      ageRanges: Array.from(ageRanges),
-      sexes: Array.from(sexes),
-      cohortCodes: Array.from(cohortCodes),
-    };
-  }, [cohort]);
-
+ // Active tab in the navigation bar.
+  // Tab IDs: intake, results, history, cohort (staff-only), phase2, methods.
   const [tab, setTab] = useState('intake');
+
+  // Bump this counter to signal MyHistoryTab / CohortViewTab to refresh.
+  // Incremented after a successful submission (Phase 3 Step 2 will hook
+  // this up; for now it just provides the prop wiring).
+  const [historyRefreshSignal, setHistoryRefreshSignal] = useState(0);
+
+  // Submission state — used to drive the Submit button label and inline status.
+  // 'idle' | 'submitting' | 'retrying'
+  const [submitState, setSubmitState] = useState('idle');
+  // Per-entry photo upload state — keyed by entry.id, value: 'uploading' | 'done' | 'failed'.
+  // Used to render small spinners/checkmarks on photo thumbnails during submit.
+  const [photoUploadStatus, setPhotoUploadStatus] = useState({});
   // -------- HANDLERS --------
   const addEntry = () => setEntries([...entries, { id: Date.now(), foodId: '', portionG: 100, meal: 'Snack', photo: null, description: '', components: null }]);
   const updateEntry = (id, key, val) => setEntries(entries.map(e => e.id === id ? { ...e, [key]: val } : e));
@@ -397,7 +132,7 @@ export default function ChromaDiet() {
 
   const handlePhotoUpload = (id, file) => {
     if (!file) return;
-    if (file.size > 5 * 1024 * 1024) { alert('Image too large. Please choose a file under 5 MB.'); return; }
+    if (file.size > 10 * 1024 * 1024) { alert('Image too large. Please choose a file under 5 MB.'); return; }
     const reader = new FileReader();
     reader.onload = (e) => {
       // Photo upload signals "let AI determine this entry" — clear food and portion
@@ -525,25 +260,71 @@ export default function ChromaDiet() {
 
   const submitToCohort = async () => {
     if (!consent) { alert('Please confirm consent before submitting to the cohort.'); return; }
-    const record = {
-      participantId, demographics, timestamp: new Date().toISOString(),
-      flavTotals: analysis.flavTotals, totalScore: analysis.totalScore,
-      totalMg: analysis.totalMg, entryCount: entries.length,
-    };
+    if (entries.length === 0) { alert('Add at least one food entry before submitting.'); return; }
+
+    setSubmitState('submitting');
+    setPhotoUploadStatus({});
     try {
-      await localStore.set(`chromadiet:participant:${participantId}:${Date.now()}`, JSON.stringify(record));
+      const { sessionId } = await submitRecall({
+        entries,
+        notes: null,
+        onRetrying: () => setSubmitState('retrying'),
+        onPhotoStart: (entryId) => { setPhotoUploadStatus(s => ({ ...s, [entryId]: 'uploading' })); },
+        onPhotoEnd: (entryId, ok) => { setPhotoUploadStatus(s => ({ ...s, [entryId]: ok ? 'done' : 'failed' })); },
+        onPhotoFailure: async (entryId, errMsg) => {
+          return window.confirm(
+            `A photo upload failed:\n\n${errMsg}\n\nClick OK to submit the recall without this photo, ` +
+            `or Cancel to abort and try again.`
+          );
+        },
+      });
+      setSubmitState('idle');
+      setPhotoUploadStatus({});
       setSubmitted(true);
       setTimeout(() => setSubmitted(false), 3000);
-    } catch (e) { alert('Submission failed: ' + e.message); }
+      setHistoryRefreshSignal((n) => n + 1);
+
+      // Fire-and-forget the server-side analysis. We don't await — the user
+      // is already seeing their results from the client-side computation.
+      // If the finalize call fails, we log it but don't surface to the user
+      // (the recall is saved; analysis can be re-computed later from food_entries).
+      finalizeSession(sessionId).catch(err => {
+        // eslint-disable-next-line no-console
+        console.warn('[finalize] background analysis failed:', err);
+      });
+
+    } catch (e) {
+      setSubmitState('idle');
+      alert(e.message || 'Submission failed.');
+    }
   };
 
-  const clearCohort = async () => {
-    if (!window.confirm('Clear all locally stored cohort submissions? This cannot be undone.')) return;
-    try {
-      const list = await localStore.list('chromadiet:participant:');
-      await Promise.all((list.keys || []).map(k => localStore.delete(k)));
-      setCohort([]);
-    } catch (e) { alert('Clear failed: ' + e.message); }
+  // Helper — call /api/finalize with the user's auth token so the server
+  // can compute and persist recall_results.
+  const finalizeSession = async (sessionId) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) {
+      throw new Error('No active session for finalize call.');
+    }
+
+    const res = await fetch('/api/finalize', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${session.access_token}`,
+      },
+      body: JSON.stringify({ sessionId }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => 'Unknown error');
+      throw new Error(`Finalize endpoint returned ${res.status}: ${errText}`);
+    }
+
+    // Trigger a refresh on history/cohort tabs so the new score appears.
+    setHistoryRefreshSignal((n) => n + 1);
+
+    return await res.json();
   };
 
   const exportReport = () => {
@@ -667,7 +448,8 @@ export default function ChromaDiet() {
           <div className="flex flex-wrap gap-1.5 bg-white/50 backdrop-blur-sm p-1.5 rounded-full border border-stone-200/60 w-fit">
             <TabButton id="intake" label="Log Intake" icon={Plus} />
             <TabButton id="results" label="My Results" icon={User} />
-            <TabButton id="cohort" label="Cohort View" icon={Users} />
+            <TabButton id="history" label={isStaff ? "All Participants — History" : "My History"} icon={ListTree} />
+            {isStaff && <TabButton id="cohort" label="Cohort View" icon={Users} />}
             <TabButton id="phase2" label="Phase 2 — Sensory" icon={Sparkles} />
             <TabButton id="methods" label="Methods & References" icon={ScrollText} />
           </div>
@@ -781,8 +563,26 @@ export default function ChromaDiet() {
                           {e.photo ? (
                             <div className="relative group">
                               <img src={e.photo} alt="meal" className="w-14 h-14 object-cover rounded-lg border border-stone-200 shadow-sm" />
-                              <button onClick={()=>updateEntry(e.id,'photo',null)} className="absolute -top-1.5 -right-1.5 bg-stone-900 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition" title="Remove photo">
-                                <X size={11} />
+
+                              {/* NEW: upload status overlay */}
+                              {photoUploadStatus[e.id] === 'uploading' && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-stone-900/40 rounded-lg">
+                                  <RefreshCw size={14} className="text-white animate-spin" />
+                                </div>
+                              )}
+                              {photoUploadStatus[e.id] === 'done' && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-emerald-700/60 rounded-lg pointer-events-none">
+                                  <CheckCircle2 size={16} className="text-white" />
+                                </div>
+                              )}
+                              {photoUploadStatus[e.id] === 'failed' && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-rose-700/60 rounded-lg pointer-events-none">
+                                  <AlertCircle size={16} className="text-white" />
+                                </div>
+                              )}
+
+                              <button  onClick={()=>updateEntry(e.id,'photo',null)} disabled={photoUploadStatus[e.id] === 'uploading'}  className="absolute -top-1.5 -right-1.5 bg-stone-900 text-white rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition disabled:opacity-30 disabled:cursor-not-allowed"  title="Remove photo">
+                                <X size={10} />
                               </button>
                             </div>
                           ) : (
@@ -861,8 +661,15 @@ export default function ChromaDiet() {
                   <button onClick={()=>setTab('results')} className="px-5 py-2 text-sm font-medium rounded-full border border-emerald-700 text-emerald-700 hover:bg-emerald-700 hover:text-white transition">
                     View Results <ChevronRight size={13} className="inline ml-0.5" />
                   </button>
-                  <button onClick={submitToCohort} className="px-5 py-2 text-sm font-medium rounded-full bg-stone-900 text-white hover:bg-stone-700 transition">
-                    {submitted ? '✓ Submitted' : 'Submit to Cohort'}
+                  <button
+                    onClick={submitToCohort}
+                    disabled={submitState !== 'idle'}
+                    className="px-5 py-2 text-sm font-medium rounded-full bg-stone-900 text-white hover:bg-stone-700 transition disabled:opacity-60 disabled:cursor-wait"
+                  >
+                    {submitted                       ? '✓ Submitted' :
+                    submitState === 'submitting'    ? 'Submitting…' :
+                    submitState === 'retrying'      ? 'Network blip — retrying…' :
+                                                      'Submit to Cohort'}
                   </button>
                 </div>
               </div>
@@ -994,6 +801,14 @@ export default function ChromaDiet() {
               </div>
             )}
           </div>
+        )}
+
+        {tab === 'history' && (
+          <MyHistoryTab
+            refreshSignal={historyRefreshSignal}
+            onJumpToIntake={() => setTab('intake')}
+            isStaff={isStaff}
+          />
         )}
 
         {/* ========== RESULTS TAB ========== */}
@@ -1358,92 +1173,9 @@ export default function ChromaDiet() {
         )}
 
         {/* ========== COHORT TAB ========== */}
-        {tab === 'cohort' && (
-          <div>
-            <SectionHeading
-              eyebrow="Aggregate · All Participants"
-              title="Cohort intake patterns."
-              sub="Anonymous aggregated data from all submissions stored in this browser. Filter by demographic sub-group below. For multi-device research deployments, swap the localStorage layer for a backend (Supabase, Firebase, or custom API)."
-            />
-
-            {/* Sub-group filter */}
-            <Card className="p-5 mb-5">
-              <div className="flex items-center gap-2 text-[11px] tracking-[0.2em] uppercase text-stone-500 font-semibold mb-3"><Filter size={12} /> Sub-group filter</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs text-stone-600 mb-1">Age range</label>
-                  <select value={cohortFilter.ageRange} onChange={e=>setCohortFilter({...cohortFilter, ageRange:e.target.value})} className="w-full border border-stone-300 px-3 py-2 text-sm bg-white rounded-lg">
-                    {cohortFilterOptions.ageRanges.map(o => <option key={o} value={o}>{o === 'all' ? 'All' : o}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-stone-600 mb-1">Sex</label>
-                  <select value={cohortFilter.sex} onChange={e=>setCohortFilter({...cohortFilter, sex:e.target.value})} className="w-full border border-stone-300 px-3 py-2 text-sm bg-white rounded-lg">
-                    {cohortFilterOptions.sexes.map(o => <option key={o} value={o}>{o === 'all' ? 'All' : o}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs text-stone-600 mb-1">Cohort code</label>
-                  <select value={cohortFilter.cohortCode} onChange={e=>setCohortFilter({...cohortFilter, cohortCode:e.target.value})} className="w-full border border-stone-300 px-3 py-2 text-sm bg-white rounded-lg">
-                    {cohortFilterOptions.cohortCodes.map(o => <option key={o} value={o}>{o === 'all' ? 'All' : o}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="text-xs text-stone-500 mt-3">{filteredCohort.length} of {cohort.length} submissions match the current filter.</div>
-            </Card>
-
-            {cohortLoading ? (
-              <div className="text-stone-500 text-sm text-center py-12">Loading cohort data…</div>
-            ) : !cohortStats ? (
-              <Card className="p-12 text-center">
-                <Users size={32} strokeWidth={1.2} className="mx-auto text-stone-400 mb-4" />
-                <div style={{ fontFamily: 'Fraunces, serif' }} className="text-2xl mb-2 font-medium">{cohort.length === 0 ? 'No submissions yet' : 'No matches for this filter'}</div>
-                <p className="text-sm text-stone-600 max-w-md mx-auto">{cohort.length === 0 ? 'Once participants submit their 24-hour recalls, aggregate statistics will appear here in real time.' : 'Try widening the sub-group filter above.'}</p>
-              </Card>
-            ) : (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-5">
-                  <Card className="p-6" accent="#7B3F9E">
-                    <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500 font-semibold">Participants</div>
-                    <div style={{ fontFamily: 'Fraunces, serif' }} className="text-5xl font-medium mt-2 text-stone-900">{cohortStats.n}</div>
-                    <div className="text-xs text-stone-600 mt-2">{cohort.length === cohortStats.n ? 'all participants' : `filtered from ${cohort.length}`}</div>
-                  </Card>
-                  <Card className="p-6" accent="#5B8C3E">
-                    <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500 font-semibold">Mean ChromaDiet Score</div>
-                    <div style={{ fontFamily: 'Fraunces, serif' }} className="text-5xl font-medium mt-2 text-stone-900">{cohortStats.meanScore.toFixed(1)}<span className="text-xl text-stone-400">/100</span></div>
-                  </Card>
-                  <Card className="p-6" accent="#E89422">
-                    <div className="text-[10px] tracking-[0.2em] uppercase text-stone-500 font-semibold">Mean Total Flavonoids</div>
-                    <div style={{ fontFamily: 'Fraunces, serif' }} className="text-5xl font-medium mt-2 text-stone-900">{Object.values(cohortStats.means).reduce((a,b)=>a+b,0).toFixed(0)}<span className="text-xl text-stone-400">mg</span></div>
-                  </Card>
-                </div>
-
-                <Card className="p-6 mb-5">
-                  <SubHeading label="Figure 7 · Cohort vs. NHANES" title="Mean intake by flavonoid class" hint="Filtered cohort means (purple) compared to NHANES 2007–2008 U.S. adult means (gray)." />
-                  <ResponsiveContainer width="100%" height={320}>
-                    <BarChart data={Object.keys(FLAVONOID_CLASSES).map(k => ({
-                      name: FLAVONOID_CLASSES[k].label,
-                      Cohort: Number(cohortStats.means[k].toFixed(2)),
-                      NHANES: NHANES_MEAN[k],
-                    }))}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0e9dc" />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                      <YAxis tick={{ fontSize: 11 }} label={{ value: 'mg/day', angle: -90, position: 'insideLeft', fontSize: 10 }}/>
-                      <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e7e5e4' }} />
-                      <Legend wrapperStyle={{ fontSize: '11px' }} />
-                      <Bar dataKey="Cohort" fill="#7B3F9E" radius={[4,4,0,0]} />
-                      <Bar dataKey="NHANES" fill="#a8a29e" radius={[4,4,0,0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </Card>
-
-                <div className="flex justify-end">
-                  <button onClick={clearCohort} className="text-xs text-stone-500 hover:text-rose-600 underline">Clear local cohort data</button>
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        {tab === 'cohort' && isStaff && (
+          <CohortViewTab refreshSignal={historyRefreshSignal} />
+        )} 
 
         {/* ========== PHASE 2 TAB ========== */}
         {tab === 'phase2' && (
