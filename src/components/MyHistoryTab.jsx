@@ -148,7 +148,7 @@ function HistoryRow({ row }) {
         {row.entry_count ?? <span className="text-stone-400">—</span>}
       </td>
       <td className="px-4 py-3 text-stone-700">
-        {typeof row.score === 'number' ? row.score.toFixed(1) : <span className="text-stone-400">—</span>}
+        {typeof row.total_score === 'number' ? row.total_score.toFixed(0) : <span className="text-stone-400">—</span>}
       </td>
       <td className="px-4 py-3">
         <StatusPill status={row.status} />
